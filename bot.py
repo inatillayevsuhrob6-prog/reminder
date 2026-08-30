@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
+# Asosiy koddan tashqarida yoki main ichida
 scheduler = AsyncIOScheduler(timezone="Asia/Tashkent")
-
 # --- DATABASE SOZLAMALARI ---
 DB_NAME = "reminders.db"
 
@@ -91,43 +91,63 @@ async def process_task_name(message: types.Message):
     user_states[message.from_user.id]["step"] = "waiting_for_time"
     await message.answer("Qachon eslatma kelsin? (Masalan: Bugun 15:00)")
 
+from datetime import datetime, timedelta, timezone
+
+# ... boshqa kodlar ...
+
 @dp.message(lambda m: user_states.get(m.from_user.id, {}).get("step") == "waiting_for_time")
 async def process_task_time(message: types.Message):
     user_id = message.from_user.id
     time_input = message.text.lower().strip()
     task_name = user_states[user_id].get("task_name", "Vazifa")
     
+    # TO'G'RILANGAN QISM: Toshkent vaqtini olish (+5 UTC)
+    tz_tashkent = timezone(timedelta(hours=5))
+    now = datetime.now(tz_tashkent) 
+    
     target_time = None
-    now = datetime.now()
     
     try:
         if "ertaga" in time_input:
-            target_date = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+            # Ertangi kunni Toshkent vaqtida hisoblash
+            target_date = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
             h, m = map(int, time_input.split()[-1].split(':'))
             target_time = target_date.replace(hour=h, minute=m)
+            
         elif "bugun" in time_input:
             h, m = map(int, time_input.split()[-1].split(':'))
             target_time = now.replace(hour=h, minute=m, second=0, microsecond=0)
-            if target_time <= now: target_time += timedelta(days=1)
+            # Agar belgilangan vaqt hozirdan o'tib ketgan bo'lsa, ertagiga qoldirish
+            if target_time <= now:
+                target_time += timedelta(days=1)
+                
         else:
+            # Faqat soat yozilgan bo'lsa (masalan "15:00")
             h, m = map(int, time_input.split(':'))
             target_time = now.replace(hour=h, minute=m, second=0, microsecond=0)
-            if target_time <= now: target_time += timedelta(days=1)
-    except:
-        await message.answer("Vaqt formati noto'g'ri. 'Bugun 15:00' deb yozing.")
+            if target_time <= now:
+                target_time += timedelta(days=1)
+                
+    except Exception as e:
+        await message.answer(f"Vaqt xatosi: {e}. Iltimos 'Bugun 15:00' formatida yozing.")
         return
 
     if target_time:
+        # Scheduler ham Toshkent vaqtida ishlashi kerak
         job_id = f"task_{user_id}_{int(now.timestamp())}"
         
-        # Scheduler ga qo'shish
-        scheduler.add_job(send_reminder, trigger=DateTrigger(run_date=target_time), 
-                          args=[user_id, task_name], id=job_id, replace_existing=True)
+        scheduler.add_job(
+            send_reminder, 
+            trigger=DateTrigger(run_date=target_time), # target_time allaqachon timezone info bilan
+            args=[user_id, task_name], 
+            id=job_id,
+            replace_existing=True
+        )
         
-        # Bazaga yozish
+        # Bazaga saqlash (vaqtni string sifatida saqlaymiz)
         add_task_to_db(user_id, task_name, target_time.strftime("%d-%m %H:%M"), job_id)
         
-        await message.answer(f"✅ Qabul! {target_time.strftime('%H:%M')} da eslataman.", reply_markup=main_menu)
+        await message.answer(f"✅ Qabul! {target_time.strftime('%H:%M')} da (Toshkent vaqti) eslataman.", reply_markup=main_menu)
         user_states[user_id] = {}
 
 async def send_reminder(user_id, task_name):
