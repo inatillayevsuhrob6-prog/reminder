@@ -9,7 +9,7 @@ from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 
 # TOKENNI SHU YERGA YOZING
-API_TOKEN = "8793661108:AAGZwGEqGAlxp8aFcURDwjOBMs-ayh9zkxU"
+API_TOKEN = "8793661108:AAGvvpv3Tzqttp5T8FuqvJYqlD0c1gg-fec"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
